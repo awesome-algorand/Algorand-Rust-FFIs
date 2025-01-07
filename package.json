@@ -1,7 +1,10 @@
 {
   "name": "ffi-testing",
   "workspaces": [
-    "./examples/next.js",
+    "./examples/*",
     "./crates/algo_models/tests/js"
-  ]
+  ],
+  "devDependencies": {
+    "ajv": "^8.17.1"
+  }
 }

@@ -1,8 +1,8 @@
-import type { KeyPairRecord } from "./types.js";
+import type { KeyPairRecord } from "./types";
 
 import {createMethod} from "./sha512";
 import {encode} from "./hi-base32";
-import {saveKeyPair} from "@/lib/db";
+import {saveKeyPair} from "./db";
 
 const sha512_256 = createMethod(256);
 const HASH_BYTES_LENGTH = 32;

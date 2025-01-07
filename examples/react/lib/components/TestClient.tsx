@@ -1,5 +1,5 @@
 "use client";
-import {main} from "@/lib/test"
+import {main} from "../test.ts"
 import {useEffect} from "react";
 export function TestClient() {
     useEffect(() => {

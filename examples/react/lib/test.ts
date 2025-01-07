@@ -4,12 +4,10 @@ import init, {
     attachSignature,
 } from "algo_models";
 
-let { AlgorandTransactionCrafter } = require("@algorandfoundation/algo-models");
 import * as ed from "@noble/ed25519";
 
-import * as msgpack from "algo-msgpack-with-bigint";
-import {encodeAddress, exportKey, generateKey, sign} from "@/lib/wallet";
-import {KeyPairRecord} from "@/lib/types";
+import {generateKey, sign} from "./wallet";
+import {KeyPairRecord} from "./types";
 // Generate a ed25519 keypair
 const privKey = ed.utils.randomPrivateKey();
 console.log(privKey)
@@ -26,7 +24,7 @@ const genesisHash = "SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=";
 const amount = 1000000;
 const from = "TIQ4WPFJQYSP2SKLSCDWTK2IIQQ6FOS6BHYIYDGRUZSSROJC5P3HBCZ67Y";
 const to = "66LKPOMVQJL2YVMTAVULQVZMZZCD5M2YVWA7KRHEOHYOJU5KLH2PB7HRRY";
-const algoCrafter = new AlgorandTransactionCrafter(genId, genesisHash);
+const algoCrafter = new mod.AlgorandTransactionCrafter(genId, genesisHash);
 const tx = algoCrafter
     .pay(amount, from, to)
     .addFirstValidRound(1000)
@@ -81,7 +79,7 @@ export async function nativeWithRustTest(){
         },
         receiver: tx.rcv,
         amount: tx.amt,
-    } as PayTransactionFields;
+    } as unknown as PayTransactionFields;
 
 
 
@@ -134,7 +132,7 @@ export async function rustTest(){
         },
         receiver: tx.rcv,
         amount: tx.amt,
-    } as PayTransactionFields;
+    }  as unknown as PayTransactionFields;
     const btyesForSigning = encodePayment(fields);
 
     console.log("Rust", "start");
@@ -166,7 +164,7 @@ export async function main() {
         console.log(rust)
     }
 
-    if(native.every((sig: Uint8Array, i) => {
+    if(native.every((sig: Uint8Array, i: number) => {
         return sig.every((v, j) => v === nativeWithRust[i][j])
     })){
         console.log("Native is equal to NativeRust")
