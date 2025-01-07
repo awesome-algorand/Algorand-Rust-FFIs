@@ -1,9 +1,6 @@
 node_modules
 
 /target
-
 .vscode/
-!/.vscode/settings.recommended.json
-
 .zed/
-!/.zed/settings.recommended.json
+.venv/

@@ -9,13 +9,12 @@
   ],
   "main": "pkg/algo_models.js",
   "types": "pkg/algo_models.d.ts",
-  "sideEffects": [
-    "./snippets/*"
-  ],
   "dependencies": {
-    "@awesome-algorand/algod-fetch" : "^3.27.0",
     "@algorandfoundation/algo-models": "^0.0.2",
-    "algo-msgpack-with-bigint":"^2.1.1",
-    "@noble/ed25519": "^2.1.0"
+    "@noble/ed25519": "^2.1.0",
+    "algo-msgpack-with-bigint": "^2.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14"
   }
 }

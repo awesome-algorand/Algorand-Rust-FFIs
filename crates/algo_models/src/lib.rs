@@ -1,29 +1,30 @@
 use serde::{Deserialize, Serialize};
+// Primary using serde_with for Bytes, which is better than serde_bytes
+// see https://docs.rs/serde_with/latest/serde_with/struct.Bytes.html
+// It also has some other nice QOL features, like skip_serializing_none
+use serde_with::{serde_as, skip_serializing_none, Bytes};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
-mod foreign_exports;
-
-#[cfg(feature = "ffi_uniffi")]
-uniffi::setup_scaffolding!();
-
-#[cfg_attr(feature = "ffi_uniffi", derive(uniffi::Error))]
 #[derive(Debug, Error)]
 pub enum MsgPackError {
-    #[error("Failed to serialize transaction")]
-    SerializeError,
+    #[error("Error ocurred during encoding: {0}")]
+    EncodeError(#[from] rmp_serde::encode::Error),
 
-    #[error("Failed to deserialize transaction")]
-    DeserializeError,
+    #[error("Error ocurred during decoding: {0}")]
+    DecodeError(#[from] rmp_serde::decode::Error),
 
-    #[error("Failed to encode rmpv value")]
-    RmpvEncodeError,
+    #[error("Error ocurred during encoding: {0}")]
+    RmpvEncodeError(#[from] rmpv::encode::Error),
 
-    #[error("Failed to decode rmpv value")]
-    RmpvDecodeError,
+    #[error("Error ocurred during encoding: {0}")]
+    RmpvDecodeError(#[from] rmpv::decode::Error),
 
-    #[error("Failed to convert rmpv value")]
-    RmpvConvertError,
+    #[error("Unknown transaction type")]
+    UnknownTransactionType,
+
+    #[error("Invalid input: {0}")]
+    InputError(String),
 }
 
 pub trait AlgorandMsgpack: Serialize + for<'de> Deserialize<'de> {
@@ -36,29 +37,32 @@ pub trait AlgorandMsgpack: Serialize + for<'de> Deserialize<'de> {
             .with_struct_map()
             .with_bytes(rmp_serde::config::BytesMode::ForceAll);
 
-        self.serialize(&mut temp_serializer)
-            .map_err(|_| MsgPackError::SerializeError)?;
+        self.serialize(&mut temp_serializer)?;
 
         // Deserialize into a Value and sort recursively
-        let value = rmpv::decode::read_value(&mut temp_buf.as_slice())
-            .map_err(|_| MsgPackError::RmpvDecodeError)?;
+        let value = rmpv::decode::read_value(&mut temp_buf.as_slice())?;
         let sorted_value = sort_msgpack_value(value);
 
         // Serialize the sorted value
         let mut final_buf = Vec::new();
-        rmpv::encode::write_value(&mut final_buf, &sorted_value)
-            .map_err(|_| MsgPackError::RmpvEncodeError)?;
+        rmpv::encode::write_value(&mut final_buf, &sorted_value)?;
 
         Ok(final_buf)
     }
 
     /// Decode the bytes into Self. "TX" prefix is ignored if present
     fn decode(bytes: &[u8]) -> Result<Self, MsgPackError> {
-        if bytes[0] == b'T' && bytes[1] == b'X' {
+        if bytes.is_empty() {
+            return Err(MsgPackError::InputError(
+                "attempted to decode 0 bytes".to_string(),
+            ));
+        }
+
+        if bytes.len() > 2 && bytes[0] == b'T' && bytes[1] == b'X' {
             let without_prefix = bytes[2..].to_vec();
-            rmp_serde::from_slice(&without_prefix).map_err(|_| MsgPackError::DeserializeError)
+            Ok(rmp_serde::from_slice(&without_prefix)?)
         } else {
-            rmp_serde::from_slice(bytes).map_err(|_| MsgPackError::DeserializeError)
+            Ok(rmp_serde::from_slice(bytes)?)
         }
     }
 
@@ -122,90 +126,97 @@ pub enum TransactionType {
     ApplicationCall,
 }
 
-type Byte32 = serde_bytes::ByteBuf;
+type Byte32 = [u8; 32];
 type Pubkey = Byte32;
 
+#[serde_as]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct TransactionHeader {
     #[serde(rename = "type")]
-    transaction_type: TransactionType,
+    pub transaction_type: TransactionType,
 
     #[serde(rename = "snd")]
-    sender: Pubkey,
+    #[serde_as(as = "Bytes")]
+    pub sender: Pubkey,
 
-    fee: u64,
+    pub fee: u64,
 
     #[serde(rename = "fv")]
-    first_valid: u64,
+    pub first_valid: u64,
 
     #[serde(rename = "lv")]
-    last_valid: u64,
+    pub last_valid: u64,
 
     #[serde(rename = "gh")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    genesis_hash: Option<Byte32>,
+    #[serde_as(as = "Option<Bytes>")]
+    pub genesis_hash: Option<Byte32>,
 
     #[serde(rename = "gen")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    genesis_id: Option<String>,
+    pub genesis_id: Option<String>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    note: Option<serde_bytes::ByteBuf>,
+    #[serde_as(as = "Option<Bytes>")]
+    pub note: Option<Vec<u8>>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "rekey")]
-    rekey_to: Option<Pubkey>,
+    #[serde_as(as = "Option<Bytes>")]
+    pub rekey_to: Option<Pubkey>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "lx")]
-    lease: Option<Byte32>,
+    #[serde_as(as = "Option<Bytes>")]
+    pub lease: Option<Byte32>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "grp")]
-    group: Option<Byte32>,
+    #[serde_as(as = "Option<Bytes>")]
+    pub group: Option<Byte32>,
 }
 
 impl AlgorandMsgpack for TransactionHeader {}
 
+#[serde_as]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct PayTransactionFields {
     #[serde(flatten)]
-    header: TransactionHeader,
+    pub header: TransactionHeader,
 
     #[serde(rename = "rcv")]
-    receiver: Pubkey,
+    #[serde_as(as = "Bytes")]
+    pub receiver: Pubkey,
 
     #[serde(rename = "amt")]
-    amount: u64,
+    pub amount: u64,
 
     #[serde(rename = "close")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    close_remainder_to: Option<Pubkey>,
+    pub close_remainder_to: Option<Pubkey>,
 }
 
 impl AlgorandMsgpack for PayTransactionFields {}
 
+#[serde_as]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct AssetTransferTransactionFields {
     #[serde(flatten)]
-    header: TransactionHeader,
+    pub header: TransactionHeader,
 
     #[serde(rename = "xaid")]
-    asset_id: u64,
+    pub asset_id: u64,
 
     #[serde(rename = "aamt")]
-    amount: u64,
+    pub amount: u64,
 
     #[serde(rename = "arcv")]
-    receiver: Pubkey,
+    #[serde_as(as = "Bytes")]
+    pub receiver: Pubkey,
 
     #[serde(rename = "asnd")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    asset_sender: Option<Pubkey>,
+    #[serde_as(as = "Option<Bytes>")]
+    pub asset_sender: Option<Pubkey>,
 
     #[serde(rename = "aclose")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    close_remainder_to: Option<Pubkey>,
+    #[serde_as(as = "Option<Bytes>")]
+    pub close_remainder_to: Option<Pubkey>,
 }
 
 impl AlgorandMsgpack for AssetTransferTransactionFields {}
@@ -236,18 +247,20 @@ impl Transaction {
             TransactionType::AssetTransfer => Ok(Transaction::AssetTransfer(
                 AssetTransferTransactionFields::decode(bytes)?,
             )),
-            _ => Err(MsgPackError::DeserializeError),
+            _ => Err(MsgPackError::UnknownTransactionType),
         }
     }
 }
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct SignedTransaction {
     #[serde(rename = "txn")]
-    transaction: Transaction,
+    pub transaction: Transaction,
 
     #[serde(rename = "sig")]
-    signature: Byte32,
+    #[serde_as(as = "Bytes")]
+    pub signature: [u8; 64],
 }
 
 impl AlgorandMsgpack for SignedTransaction {
@@ -262,7 +275,7 @@ fn test_pay_transaction() {
         header: TransactionHeader {
             genesis_id: None,
             transaction_type: TransactionType::Payment,
-            sender: serde_bytes::ByteBuf::from([0; 32]),
+            sender: [0; 32],
             fee: 1000,
             first_valid: 1000,
             last_valid: 1000,
@@ -272,7 +285,7 @@ fn test_pay_transaction() {
             lease: None,
             group: None,
         },
-        receiver: serde_bytes::ByteBuf::from([0; 32]),
+        receiver: [0; 32],
         amount: 1000,
         close_remainder_to: None,
     };
@@ -289,7 +302,7 @@ fn test_pay_transaction() {
 
     let signed_tx = SignedTransaction {
         transaction: tx_enum.clone(),
-        signature: serde_bytes::ByteBuf::from([0; 64]),
+        signature: [0; 64],
     };
     let encoded_stx = signed_tx.encode_raw().unwrap();
     let decoded_stx = SignedTransaction::decode(&encoded_stx).unwrap();
@@ -301,6 +314,7 @@ fn test_pay_transaction() {
     assert_eq!(prefix_encoded[1], b'X');
     assert_eq!(prefix_encoded.len(), encoded_struct.len() + 2);
     assert_eq!(prefix_encoded[2..], encoded_struct);
+    assert_eq!(encoded_struct.len(), 112);
 }
 
 #[test]
@@ -309,7 +323,7 @@ fn test_asset_transfer_transaction() {
         header: TransactionHeader {
             genesis_id: None,
             transaction_type: TransactionType::AssetTransfer,
-            sender: serde_bytes::ByteBuf::from([0; 32]),
+            sender: [0; 32],
             fee: 1000,
             first_valid: 1000,
             last_valid: 1000,
@@ -321,7 +335,7 @@ fn test_asset_transfer_transaction() {
         },
         asset_id: 1,
         amount: 1000,
-        receiver: serde_bytes::ByteBuf::from([0; 32]),
+        receiver: [0; 32],
         asset_sender: None,
         close_remainder_to: None,
     };
@@ -337,7 +351,7 @@ fn test_asset_transfer_transaction() {
 
     let signed_tx = SignedTransaction {
         transaction: tx_enum.clone(),
-        signature: serde_bytes::ByteBuf::from([0; 64]),
+        signature: [0; 64],
     };
     let encoded_stx = signed_tx.encode_raw().unwrap();
     let decoded_stx = SignedTransaction::decode(&encoded_stx).unwrap();
