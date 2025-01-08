@@ -3,12 +3,20 @@
   "type": "module",
   "version": "0.1.0",
   "files": [
-    "algo_models_bg.wasm",
-    "algo_models.js",
-    "algo_models.d.ts"
+    "./pkg/algo_models_ffi_bg.wasm",
+    "./pkg/algo_models_ffi.js",
+    "./pkg/algo_models_ffi.d.ts"
   ],
-  "main": "pkg/algo_models.js",
-  "types": "pkg/algo_models.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/algo_models_ffi.d.ts",
+      "default": "./pkg/algo_models_ffi.js"
+    },
+    "./wasm": {
+      "types": "./pkg/algo_models_ffi_bg.wasm.d.ts",
+      "default": "./pkg/algo_models_ffi_bg.wasm"
+    }
+  },
   "dependencies": {
     "@algorandfoundation/algo-models": "^0.0.2",
     "@noble/ed25519": "^2.1.0",

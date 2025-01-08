@@ -1,22 +1,45 @@
+import * as ed from "@noble/ed25519";
+
+// Algo Models FFI
 import init, {
     type PayTransactionFields,
     encodePayment,
-    attachSignature,
+    attachSignature, InitInput,
 } from "algo_models";
 
-import * as ed from "@noble/ed25519";
+// TODO: fix importing and mounting wasm for SSR
+// import * as wasmMod from "algo_models/wasm"
+
+// Algo Models JS
+import * as mod from "@algorandfoundation/algo-models";
 
 import {generateKey, sign} from "./wallet";
 import {KeyPairRecord} from "./types";
-// Generate a ed25519 keypair
-const privKey = ed.utils.randomPrivateKey();
-console.log(privKey)
-await init();
 
-// console.log(encodeAddress())
+// Generated ed25519 keypair
+const privKey = new Uint8Array([172, 114,  96,  36, 78,  59, 134, 113,
+    11, 162, 176, 159,  5,  78, 134,  40,
+    137, 245, 101, 179, 72,  56, 192,  85,
+    95, 110,  92, 238, 46, 177, 162, 198])
 
-// How many times it should run
-const iterations = 2000;
+// Log a private key as an example of hybrid operations (Server and Client)
+console.log(ed.utils.randomPrivateKey())
+
+// Types for the Results
+export type ResultType = "JS" | "FFI" | "WC-JS" | "WC-FFI" | "success"
+export type IncludesProp = {
+    [k: string]: boolean,
+    JS: boolean,
+    FFI: boolean,
+    "WC-JS": boolean,
+    "WC-FFI": boolean,
+}
+export type TestResult = {
+    type: ResultType,
+    result: number
+}
+export type TestResultCallback = (err: Error | null, result: TestResult | null)=>void
+
 
 // Defaults
 const genId = "testnet-v1.0";
@@ -25,12 +48,11 @@ const amount = 1000000;
 const from = "TIQ4WPFJQYSP2SKLSCDWTK2IIQQ6FOS6BHYIYDGRUZSSROJC5P3HBCZ67Y";
 const to = "66LKPOMVQJL2YVMTAVULQVZMZZCD5M2YVWA7KRHEOHYOJU5KLH2PB7HRRY";
 const algoCrafter = new mod.AlgorandTransactionCrafter(genId, genesisHash);
-const tx = algoCrafter
+const txBuilder = algoCrafter
     .pay(amount, from, to)
     .addFirstValidRound(1000)
     .addLastValidRound(1500)
-    // .addNote("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla hendrerit quam elit. Ut congue aliquet orci vitae laoreet. Nam pulvinar ex purus, et euismod odio ornare molestie. Nulla laoreet lectus diam, non efficitur arcu consequat id. Sed efficitur orci dui. Maecenas pulvinar massa sit amet auctor suscipit. Ut ipsum nibh, facilisis eget dolor a, egestas rutrum purus. Nulla molestie elit et turpis iaculis pellentesque. Nam augue risus, congue quis mauris ut, finibus auctor enim. Sed id sapien pretium lacus interdum finibus. Ut fermentum, ipsum vel sodales pellentesque, arcu ante tempor nisl, nec sollicitudin purus tellus ut mauris. Vivamus rhoncus, odio sed porta cursus, turpis arcu dictum purus, at hendrerit nisl dui in elit. Mauris gravida gravida lorem, ac aliquam mi pharetra in. Aenean sed malesuada libero. Curabitur sollicitudin nisi in sagittis posuere. Aliquam sit amet ante augue.Nullam vitae bibendum felis. Pellentesque interdum molestie neque eget pretium. Donec non bibendum nisi, sed faucibus nisi")
-    .get();
+
 
 let nativeKey: KeyPairRecord | undefined;
 
@@ -40,14 +62,14 @@ async function initNativeKey(){
     }
 }
 
-export async function nativeTest(){
+export async function webCryptoJsTest(iterations: number, payload: number, cb:TestResultCallback){
     await initNativeKey()
     if(typeof nativeKey === 'undefined') throw new Error('Native key is undefined. This should not happen.')
 
     // TODO: Export the key and use the same for everything
     //const exportedKey = await exportKey(nativeKey)
 
-    const bytesForSigningNative: Uint8Array = tx.encode()
+    const bytesForSigningNative: Uint8Array = txBuilder.get().encode()
 
     console.log("Native", "start");
     const start = performance.now();
@@ -58,14 +80,18 @@ export async function nativeTest(){
     const result = await Promise.all(plist);
     const end = performance.now();
     console.log("Native", end - start);
+    cb(null, {
+        type: "WC-JS",
+        result: end - start
+    })
     return result
 }
-export async function nativeWithRustTest(){
+export async function webCryptoFFITest(iterations: number, payload: number, cb:TestResultCallback){
     await initNativeKey()
     if(typeof nativeKey === 'undefined') throw new Error('Native key is undefined. This should not happen.')
 
 
-
+    const tx = txBuilder.get();
     const fields = {
         header: {
             // note: tx.note,
@@ -98,13 +124,15 @@ export async function nativeWithRustTest(){
     const result = await Promise.all(plist);
     const end = performance.now();
     console.log("Native/Rust Stop", end - start);
+    cb(null, {
+        type: "WC-FFI",
+        result: end - start
+    })
     return result
 }
-export async function jsTest(){
+export async function jsTest(iterations: number,  payload: number,cb: TestResultCallback){
     console.log("JS Start");
-    const bytesForSigningTs: Uint8Array = tx.encode(); // encoded msg ready - to be signed with EdDSA
-
-
+    const bytesForSigningTs: Uint8Array = txBuilder.get().encode(); // encoded msg ready - to be signed with EdDSA
     const start = performance.now();
     const plist = []
    for (let i = 0; i < iterations; i++) {
@@ -115,11 +143,15 @@ export async function jsTest(){
     const result = await Promise.all(plist);
     const end = performance.now();
     console.log("JS Stop", end - start);
+    cb(null, {
+        type: "JS",
+        result: end - start
+    })
     return result
 }
 
-export async function rustTest(){
-
+export async function ffiTest(iterations: number, payload: number,cb: TestResultCallback){
+    const tx = txBuilder.get();
     const fields = {
         header: {
             sender: tx.snd,
@@ -146,31 +178,44 @@ export async function rustTest(){
     const result = await Promise.all(plist);
     const end = performance.now();
     console.log("Rust", end - start);
+    cb(null, {
+        type: "FFI",
+        result: end - start
+    })
     return result
 }
-export async function main() {
-    const js = await jsTest()
-    const rust = await rustTest()
-    const native = await nativeTest()
-    const nativeWithRust = await nativeWithRustTest()
 
-    if(js.every((sig: Uint8Array, i) => {
-        return sig.every((v, j) => v === rust[i][j])
-    })){
-        console.log("JS is equal to Rust")
-    } else {
-        console.log("JS is not equal to Rust")
-        console.log(js)
-        console.log(rust)
-    }
+export async function runTests(
+    iterations: number,
+    payload: number,
+    includes: IncludesProp,
+    cb: TestResultCallback
+) {
+    // TODO: Move to top of file and get RSC working
+    if(typeof window !== "undefined"){
+    await init()
+    } //else {
+    //     await init(wasmMod as unknown as InitInput);
+    // }
 
-    if(native.every((sig: Uint8Array, i: number) => {
-        return sig.every((v, j) => v === nativeWithRust[i][j])
-    })){
-        console.log("Native is equal to NativeRust")
-    } else {
-        console.log("Native is not equal to NativeRust")
-        console.log(native)
-        console.log(nativeWithRust)
+    const start = performance.now();
+
+    if (includes["JS"]) {
+        await jsTest(iterations, payload, cb)
     }
+    if (includes["FFI"]) {
+       await ffiTest(iterations, payload, cb)
+    }
+    if (includes["WC-JS"]) {
+        await webCryptoJsTest(iterations, payload, cb)
+    }
+    if (includes["WC-FFI"]) {
+        await webCryptoFFITest(iterations, payload, cb)
+    }
+    const end = performance.now();
+
+    cb(null, {
+        type: "success",
+        result: end - start
+    })
 }

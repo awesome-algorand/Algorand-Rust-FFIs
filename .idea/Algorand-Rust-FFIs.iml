@@ -8,6 +8,8 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/algo_sdk/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/uniffi-bindgen/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/rust-native/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/algo_models_ffi/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/algo_models_ffi/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

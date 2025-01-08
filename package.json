@@ -2,7 +2,7 @@
   "name": "ffi-testing",
   "workspaces": [
     "./examples/*",
-    "./crates/algo_models/tests/js"
+    "./crates/algo_models_ffi/tests/js"
   ],
   "devDependencies": {
     "ajv": "^8.17.1"
